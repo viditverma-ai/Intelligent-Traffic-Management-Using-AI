@@ -66,6 +66,26 @@ st.markdown("""
     margin-top: 20px;
     box-shadow: 0 6px 24px rgba(0,0,0,0.3);
 }
+.feature-card {
+    background: #111827;
+    padding: 18px;
+    border-radius: 16px;
+    min-height: 160px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.2);
+}
+.admin-card {
+    background: #111827;
+    padding: 18px;
+    border-radius: 14px;
+    margin-top: 10px;
+    border-left: 5px solid #f59e0b;
+}
+.info-card {
+    background: #111827;
+    padding: 16px;
+    border-radius: 12px;
+    margin-top: 10px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -176,7 +196,7 @@ def get_risk_category(risk_score):
 # ---------------- AI RECOMMENDATION ----------------
 def get_ai_recommendation(congestion, risk_score, vehicle_count, avg_speed, emergency_vehicle):
     if emergency_vehicle != "None":
-        return f"🚑 Emergency priority detected for **{emergency_vehicle}**. Immediately extend green signal time, clear junction path, and prioritize fast lane movement."
+        return f"🚑 Emergency priority detected for {emergency_vehicle}. Immediately extend green signal time, clear junction path, and prioritize fast lane movement."
 
     if congestion == "High":
         if risk_score >= 75:
@@ -243,6 +263,38 @@ def simulate_routes(vehicle_count, avg_speed, time_of_day):
     best_route = route_df.sort_values(by=["Risk Score", "Vehicle Count"], ascending=[True, True]).iloc[0]["Route"]
     return route_df, best_route
 
+# ---------------- ADMIN STATS ----------------
+def get_admin_summary(history):
+    if len(history) == 0:
+        return {
+            "total_predictions": 0,
+            "high_risk_count": 0,
+            "emergency_cases": 0,
+            "avg_risk": 0,
+            "common_congestion": "N/A",
+            "common_emergency": "N/A",
+            "common_route": "N/A"
+        }
+
+    history_df = pd.DataFrame(history)
+
+    high_risk_count = len(history_df[history_df["Risk Score"] >= 75])
+    emergency_cases = len(history_df[history_df["Emergency"] != "None"])
+    avg_risk = round(history_df["Risk Score"].mean(), 2)
+    common_congestion = history_df["Predicted Congestion"].mode()[0]
+    common_emergency = history_df["Emergency"].mode()[0]
+    common_route = history_df["Best Route"].mode()[0]
+
+    return {
+        "total_predictions": len(history_df),
+        "high_risk_count": high_risk_count,
+        "emergency_cases": emergency_cases,
+        "avg_risk": avg_risk,
+        "common_congestion": common_congestion,
+        "common_emergency": common_emergency,
+        "common_route": common_route
+    }
+
 # =========================================================
 # LANDING PAGE
 # =========================================================
@@ -254,14 +306,69 @@ if not st.session_state.entered_app:
         <p style="font-size:18px; color:#cbd5e1; margin-top:20px;">
             This AI-powered project predicts traffic congestion, calculates traffic risk,
             recommends optimized signal timing, supports emergency vehicle priority,
-            and suggests smarter alternate routes.
+            and suggests smarter alternate routes for urban traffic management.
         </p>
     </div>
     """, unsafe_allow_html=True)
 
     st.write("")
-    c1, c2, c3 = st.columns([1, 1, 1])
+    st.subheader("✨ Key Features")
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.markdown("""
+        <div class="feature-card">
+            <h4>🤖 AI Congestion Prediction</h4>
+            <p>Predicts Low / Medium / High traffic congestion using machine learning models based on live traffic inputs.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
     with c2:
+        st.markdown("""
+        <div class="feature-card">
+            <h4>🚑 Emergency Priority</h4>
+            <p>Supports Ambulance, Fire Brigade and Police priority by increasing signal time and giving emergency handling recommendations.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c3:
+        st.markdown("""
+        <div class="feature-card">
+            <h4>🛣 Route Recommendation</h4>
+            <p>Simulates alternate routes and recommends the best route based on traffic congestion and risk score.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("")
+    c4, c5, c6 = st.columns(3)
+
+    with c4:
+        st.markdown("""
+        <div class="feature-card">
+            <h4>📊 Dashboard Analytics</h4>
+            <p>Shows peak hour, busiest day, traffic trends, model comparison, feature importance and AI insights.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c5:
+        st.markdown("""
+        <div class="feature-card">
+            <h4>📜 Prediction History</h4>
+            <p>Stores live predictions and allows report download in CSV format for traffic analysis and review.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with c6:
+        st.markdown("""
+        <div class="feature-card">
+            <h4>🧠 Smart Signal Suggestion</h4>
+            <p>Provides optimized traffic signal timing and AI-based recommendation for better traffic flow management.</p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.write("")
+    c7, c8, c9 = st.columns([1, 1, 1])
+    with c8:
         if st.button("🚀 Enter Dashboard", use_container_width=True):
             st.session_state.entered_app = True
             st.rerun()
@@ -278,9 +385,16 @@ page = st.sidebar.radio(
         "📊 AI Insights",
         "📁 Dataset Preview",
         "📜 Prediction History",
+        "🛠 Admin Dashboard",
         "ℹ️ Project Info"
     ]
 )
+
+st.sidebar.write("---")
+if st.sidebar.button("🔄 Reset Session"):
+    st.session_state.prediction_history = []
+    st.session_state.entered_app = False
+    st.rerun()
 
 # ---------------- HEADER ----------------
 st.markdown('<div class="big-title">🚦 Intelligent Traffic Management Using AI</div>', unsafe_allow_html=True)
@@ -560,7 +674,14 @@ elif page == "📜 Prediction History":
         st.warning("No predictions made yet. Go to Live Prediction and test the model.")
     else:
         history_df = pd.DataFrame(st.session_state.prediction_history)
+
+        st.subheader("📋 Stored Prediction Records")
         st.dataframe(history_df, use_container_width=True)
+
+        colx, coly, colz = st.columns(3)
+        colx.metric("Total Predictions", len(history_df))
+        coly.metric("High Risk Cases", len(history_df[history_df["Risk Score"] >= 75]))
+        colz.metric("Emergency Cases", len(history_df[history_df["Emergency"] != "None"]))
 
         csv = history_df.to_csv(index=False).encode("utf-8")
         st.download_button(
@@ -570,8 +691,58 @@ elif page == "📜 Prediction History":
             mime="text/csv"
         )
 
+        if st.button("🗑 Clear Prediction History"):
+            st.session_state.prediction_history = []
+            st.rerun()
+
 # =========================================================
-# PAGE 6 - PROJECT INFO
+# PAGE 6 - ADMIN DASHBOARD
+# =========================================================
+elif page == "🛠 Admin Dashboard":
+    st.markdown('<div class="section-title">🛠 Admin Dashboard</div>', unsafe_allow_html=True)
+
+    summary = get_admin_summary(st.session_state.prediction_history)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Predictions", summary["total_predictions"])
+    c2.metric("High Risk Predictions", summary["high_risk_count"])
+    c3.metric("Emergency Cases", summary["emergency_cases"])
+
+    c4, c5, c6 = st.columns(3)
+    c4.metric("Average Risk Score", summary["avg_risk"])
+    c5.metric("Most Common Congestion", summary["common_congestion"])
+    c6.metric("Most Suggested Route", summary["common_route"])
+
+    st.write("")
+    st.markdown(f"""
+    <div class="admin-card">
+        <h4>📌 Admin Summary</h4>
+        <p><b>Most Used Emergency Type:</b> {summary["common_emergency"]}</p>
+        <p><b>Average Risk Score:</b> {summary["avg_risk"]}</p>
+        <p><b>Most Frequent Congestion Level:</b> {summary["common_congestion"]}</p>
+        <p><b>Most Suggested Route:</b> {summary["common_route"]}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if len(st.session_state.prediction_history) == 0:
+        st.info("No prediction history available yet. Make some live predictions to populate admin analytics.")
+    else:
+        history_df = pd.DataFrame(st.session_state.prediction_history)
+
+        st.subheader("📊 Admin Traffic Distribution")
+        congestion_counts = history_df["Predicted Congestion"].value_counts()
+        st.bar_chart(congestion_counts)
+
+        st.subheader("🚑 Emergency Usage Summary")
+        emergency_counts = history_df["Emergency"].value_counts()
+        st.bar_chart(emergency_counts)
+
+        st.subheader("🛣 Best Route Frequency")
+        route_counts = history_df["Best Route"].value_counts()
+        st.bar_chart(route_counts)
+
+# =========================================================
+# PAGE 7 - PROJECT INFO
 # =========================================================
 elif page == "ℹ️ Project Info":
     st.markdown('<div class="section-title">ℹ️ Project Information</div>', unsafe_allow_html=True)
@@ -592,6 +763,7 @@ elif page == "ℹ️ Project Info":
     - **Decision Tree & Random Forest**
     - **Machine Learning-based Congestion Prediction**
     - **Risk Analysis + Emergency Priority Logic**
+    - **Route Recommendation Simulation**
     """)
 
     st.subheader("🚀 Future Scope")
