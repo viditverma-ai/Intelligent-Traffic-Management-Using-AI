@@ -5,6 +5,13 @@ from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+from llm_helper import traffic_ai_assistant
+from tensorflow.keras.models import load_model
+import joblib
+cnn_model = load_model("cnn_model.keras")
+print(cnn_model.output_shape)
+st.write("CNN Output Shape:", cnn_model.output_shape)
+scaler = joblib.load("scaler.pkl")
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -502,10 +509,30 @@ elif page == "🤖 Live Prediction":
             "vehicle_count": [vehicle_count],
             "avg_speed": [avg_speed],
             "time_of_day": [time_of_day],
-            "day_of_week": [day_of_week]
+            "day_of_week": [day_of_week],
         })
 
         prediction = best_model.predict(input_df)[0]
+        cnn_signal_time = suggest_signal_time(vehicle_count, reverse_label_map[prediction])
+
+        cnn_df = pd.DataFrame({
+         "vehicle_count": [vehicle_count],
+         "avg_speed": [avg_speed],
+         "time_of_day": [time_of_day],
+         "day_of_week": [day_of_week],
+         "signal_time": [cnn_signal_time]
+})
+        cnn_input = scaler.transform(cnn_df)
+        cnn_input = cnn_input.reshape((1, 5, 1))
+   
+
+        
+
+        cnn_prediction = cnn_model.predict(cnn_input)
+        cnn_prediction = np.argmax(cnn_prediction, axis=1)[0]
+        
+       
+        cnn_label = reverse_label_map[int(cnn_prediction)]
         predicted_label = reverse_label_map[prediction]
 
         signal_time = suggest_signal_time(vehicle_count, predicted_label)
@@ -523,12 +550,12 @@ elif page == "🤖 Live Prediction":
         st.write("---")
         st.subheader("📢 Prediction Result")
 
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Predicted Congestion", predicted_label)
-        c2.metric("Suggested Signal Time", f"{signal_time} sec")
-        c3.metric("Traffic Risk Score", f"{risk_score}/100")
-        c4.metric("Severity", severity)
-
+        c1, c2, c3, c4, c5 = st.columns(5)
+        c1.metric("RF Prediction", predicted_label)
+        c2.metric("CNN Prediction", cnn_label)
+        c3.metric("Signal Time", f"{signal_time} sec")
+        c4.metric("Risk Score", f"{risk_score}/100")
+        c5.metric("Severity", severity)
         # Congestion alerts
         if predicted_label == "High":
             st.error("🚨 Heavy traffic detected. Immediate signal optimization recommended.")
@@ -594,6 +621,27 @@ elif page == "🤖 Live Prediction":
             "Best Route": best_route
         }
         st.session_state.prediction_history.append(history_row)
+
+        st.subheader("🤖 Gemini AI Traffic Assistant")
+
+        with st.spinner("Generating AI explanation..."):
+            try:
+                ai_response = traffic_ai_assistant(
+                    vehicle_count=vehicle_count,
+                    avg_speed=avg_speed,
+                    time_of_day=time_of_day,
+                    day=day_map[day_of_week],
+                    congestion=predicted_label,
+                    risk_score=risk_score,
+                    signal_time=signal_time,
+                    emergency=emergency_vehicle,
+                    route=best_route
+                )
+
+                st.success(ai_response)
+
+            except Exception as e:
+                st.error(f"Gemini Error: {e}")
 
 # =========================================================
 # PAGE 3 - AI INSIGHTS
